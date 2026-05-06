@@ -1,9 +1,12 @@
 import type { SurfSpot } from '@/types/surf';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 
-const ratingStyles: Record<SurfSpot['rating'], string> = {
-  Good: 'bg-[#dbeafe] text-[#1e40af]',
-  Fair: 'bg-[#fef9c3] text-[#854d0e]',
-  Poor: 'bg-[#fee2e2] text-[#991b1b]',
+const ratingVariants: Record<SurfSpot['rating'], 'good' | 'fair' | 'poor'> = {
+  Good: 'good',
+  Fair: 'fair',
+  Poor: 'poor',
 };
 
 interface SpotCardsProps {
@@ -11,47 +14,66 @@ interface SpotCardsProps {
   onSelectSpot: (spot: SurfSpot) => void;
 }
 
+function formatWaterTemp(waterTemp: SurfSpot['waterTemp']) {
+  return waterTemp === null ? 'N/A' : `${waterTemp}°C`;
+}
+
 export function SpotCards({ spots, onSelectSpot }: SpotCardsProps) {
-  if (spots.length === 0) {
-    return null;
-  }
+  if (spots.length === 0) return null;
 
   return (
-    <section className="mt-8 mx-auto max-w-6xl rounded-t-2xl bg-white px-10 py-16">
-      <h2 className="mb-8 text-center text-4xl font-bold text-[#1a2e3b]">
-        Today&apos;s conditions in Bali
-      </h2>
+    <section id="forecast" className="bg-black px-6 py-14 md:px-10 md:py-20">
+      <div className="mx-auto max-w-6xl">
+        <div className="mb-10 text-center">
+          <h2 className="text-2xl font-medium text-white md:text-3xl">
+            today&apos;s conditions in bali
+          </h2>
+          <p className="mt-2 text-sm text-white/60">tap a spot for a full ai-powered breakdown</p>
+        </div>
 
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
-        {spots.map((spot) => (
-          <button
-            key={spot.name}
-            type="button"
-            onClick={() => onSelectSpot(spot)}
-            className="cursor-pointer rounded-2xl border-2 border-transparent bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-1 hover:border-[#90e0ef] hover:shadow-lg"
-          >
-            <div className="mb-3 flex items-start justify-between">
-              <div>
-                <div className="mb-0.5 text-lg font-extrabold text-[#1a2e3b]">{spot.name}</div>
-                <div className="text-sm font-semibold text-[#7a9aaa]">{spot.location}</div>
-              </div>
-              <div className="text-4xl font-bold leading-none text-[#0077b6]">{spot.score}</div>
-            </div>
-
-            <div
-              className={`mb-3 inline-block rounded-full px-3 py-1 text-xs font-extrabold uppercase tracking-wide ${ratingStyles[spot.rating]}`}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {spots.map((spot) => (
+            <button
+              key={spot.name}
+              type="button"
+              onClick={() => onSelectSpot(spot)}
+              className="group text-left"
             >
-              {spot.rating}
-            </div>
+              <Card className={cn(
+                'h-full cursor-pointer transition-all duration-200',
+                'hover:-translate-y-1 hover:border-white/30 hover:shadow-md'
+              )}>
+                <CardContent className="p-5">
+                  <div className="mb-4 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate font-medium text-white transition-colors group-hover:text-white/80">
+                        {spot.name}
+                      </div>
+                      <div className="mt-0.5 text-xs uppercase tracking-wider text-white/50">
+                        {spot.location}
+                      </div>
+                    </div>
+                    <div className="shrink-0 rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-center">
+                      <div className="text-2xl font-medium leading-none text-white">{spot.score}</div>
+                      <div className="mt-0.5 text-[9px] font-medium uppercase tracking-widest text-white/50">/ 10</div>
+                    </div>
+                  </div>
 
-            <div className="grid grid-cols-2 gap-2.5">
-              <Metric label="Wave Height" value={`${spot.waveHeight.toFixed(1)} m`} />
-              <Metric label="Wind" value={`${spot.windSpeed} km/h ${spot.windDirection}`} />
-              <Metric label="Period" value={`${spot.period} sec`} />
-              <Metric label="Water" value={`${spot.waterTemp}°C`} />
-            </div>
-          </button>
-        ))}
+                  <Badge variant={ratingVariants[spot.rating]} className="mb-4">
+                    {spot.rating} conditions
+                  </Badge>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <Metric label="Wave Height" value={`${spot.waveHeight.toFixed(1)} m`} />
+                    <Metric label="Wind" value={`${spot.windSpeed} km/h ${spot.windDirection}`} />
+                    <Metric label="Period" value={`${spot.period} sec`} />
+                    <Metric label="Water" value={formatWaterTemp(spot.waterTemp)} />
+                  </div>
+                </CardContent>
+              </Card>
+            </button>
+          ))}
+        </div>
       </div>
     </section>
   );
@@ -59,9 +81,9 @@ export function SpotCards({ spots, onSelectSpot }: SpotCardsProps) {
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="text-sm font-semibold text-[#2d4a5a]">
-      <span className="mb-0.5 block text-xs text-[#7a9aaa]">{label}</span>
-      {value}
+    <div className="rounded-lg border border-white/10 bg-black px-3 py-2.5">
+      <span className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-white/50">{label}</span>
+      <span className="text-sm font-medium text-white">{value}</span>
     </div>
   );
 }

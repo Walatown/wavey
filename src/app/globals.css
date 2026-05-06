@@ -1,26 +1,209 @@
+@import url('https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Bali palette */
+  --linen:       #FAF7F2;
+  --sand:        #EFE3CC;
+  --warm-stone:  #C9AB88;
+  --terracotta:  #BF5F38;
+  --terracotta-dark: #9E4D2C;
+  --wood:        #5C3620;
+  --ocean:       #1F4E5F;
+  --ocean-mid:   #2E7282;
+  --green:       #4D6E42;
+  --deep:        #16242D;
+  --muted:       #8A7A6E;
+  --text:        #2A1A10;
+
+  /* Semantic */
+  --background: var(--linen);
+  --foreground: var(--text);
+  --border: rgba(90, 60, 30, 0.12);
+  --surface: #FFFDF9;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: 'Readex Pro', system-ui, -apple-system, sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--linen);
+  color: var(--text);
+  font-family: 'Readex Pro', system-ui, -apple-system, sans-serif;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Animations ─────────────────────────────── */
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(28px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes gentleFloat {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-6px); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+.animate-fade-up {
+  opacity: 0;
+  animation: fadeUp 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.animate-fade-in {
+  opacity: 0;
+  animation: fadeIn 1s ease forwards;
+}
+
+.in-view {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 0.85s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.85s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.in-view.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.in-view-delay-1 { transition-delay: 0.1s; }
+.in-view-delay-2 { transition-delay: 0.2s; }
+.in-view-delay-3 { transition-delay: 0.3s; }
+.in-view-delay-4 { transition-delay: 0.4s; }
+
+/* ── Textures & surfaces ─────────────────────── */
+
+.surface-linen {
+  background-color: var(--linen);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='60' height='60' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+}
+
+/* ── Map markers ─────────────────────────────── */
+
+.wavey-map-marker {
+  min-width: 80px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: transparent;
+  border: 0;
+  font-family: 'Readex Pro', system-ui, -apple-system, sans-serif;
+  font-weight: 700;
+  cursor: pointer;
+  filter: drop-shadow(0 3px 10px rgba(28, 36, 45, 0.35));
+}
+
+.wavey-map-marker-pin {
+  background: #16242D;
+  border: 1.5px solid rgba(255,255,255,0.18);
+  border-radius: 10px;
+  padding: 5px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  transition: transform 150ms ease;
+}
+
+/* Score color variants — must come before .selected so .selected wins */
+.wavey-map-marker-pin.score-red {
+  background: rgba(70, 0, 0, 0.92);
+  border-color: rgba(255, 80, 80, 0.45);
+}
+.wavey-map-marker-pin.score-red .wavey-map-marker-score {
+  color: #ff6b6b;
+}
+
+.wavey-map-marker-pin.score-yellow {
+  background: rgba(55, 45, 0, 0.92);
+  border-color: rgba(255, 200, 50, 0.45);
+}
+.wavey-map-marker-pin.score-yellow .wavey-map-marker-score {
+  color: #ffd43b;
+}
+
+.wavey-map-marker-pin.score-green {
+  background: rgba(0, 45, 18, 0.92);
+  border-color: rgba(50, 200, 100, 0.45);
+}
+.wavey-map-marker-pin.score-green .wavey-map-marker-score {
+  color: #51cf66;
+}
+
+.wavey-map-marker-pin.selected {
+  background: #ffffff;
+  border-color: rgba(255,255,255,0.35);
+  transform: scale(1.1);
+}
+
+.wavey-map-marker-pin.selected .wavey-map-marker-name,
+.wavey-map-marker-pin.selected .wavey-map-marker-score {
+  color: #000000;
+}
+
+.wavey-map-marker-name {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.7);
+}
+
+.wavey-map-marker-score {
+  font-size: 17px;
+  font-weight: 800;
+  color: #ffffff;
+  line-height: 1;
+}
+
+.mapboxgl-map { font-family: 'Readex Pro', system-ui, -apple-system, sans-serif; }
+
+/* ── Transitions ─────────────────────────────── */
+
+a, button {
+  transition: transform 160ms ease, background-color 160ms ease,
+              border-color 160ms ease, color 160ms ease, opacity 160ms ease,
+              box-shadow 160ms ease;
+}
+
+button:focus-visible, a:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 3px;
+}
+
+html,
+body,
+#root {
+  height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: #07090f;
+  color: #fff;
+  font-family: 'Readex Pro', system-ui, -apple-system, sans-serif;
+}
+
+.hero-title {
+  letter-spacing: -0.04em;
+  line-height: 0.95;
 }

@@ -7,19 +7,20 @@ import {
   pickClosestIndex,
 } from '@/lib/openMeteo';
 import { calculateSurfScore } from '@/lib/scoring';
-import { getWaveHeight } from '@/lib/waveHeight';
 import type {
+  ForecastHour,
   SpotForecastInput,
   SurfExplanationRequest,
-  SurfScoreRecord,
   SurfSpot,
 } from '@/types/surf';
 
+// Returns all configured surf spots from the database.
 async function getSpots(): Promise<SpotForecastInput[]> {
   const { rows } = await pool.query<SpotForecastInput>('SELECT * FROM spots ORDER BY id');
   return rows;
 }
 
+// Loads one surf spot so explanation requests can include spot metadata.
 async function getSpotById(spotId: number): Promise<SpotForecastInput | null> {
   const { rows } = await pool.query<SpotForecastInput>(
     'SELECT * FROM spots WHERE id = $1 LIMIT 1',
@@ -29,45 +30,61 @@ async function getSpotById(spotId: number): Promise<SpotForecastInput | null> {
   return rows[0] ?? null;
 }
 
-async function saveSurfScore(record: SurfScoreRecord) {
-  await pool.query(
-    `INSERT INTO surf_scores
-      (spot_id, wave_height, wind_speed, wind_direction, period, swell_direction, water_temp, score, rating)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-    [
-      record.spotId,
-      record.waveHeight,
-      record.windSpeed,
-      record.windDirection,
-      record.period,
-      record.swellDirection,
-      record.waterTemp,
-      record.score,
-      record.rating,
-    ]
-  );
-}
-
+// Reads a required hourly value and falls back to zero when it is missing.
 function getHourlyValue(values: number[] | undefined, index: number) {
   return values?.[index] ?? 0;
 }
 
-async function buildSurfSpot(
-  spot: SpotForecastInput,
-  options: { persistScore?: boolean } = {}
-): Promise<SurfSpot> {
+// Returns the wave height for the selected forecast hour, or zero when missing.
+function getWaveHeight(values: number[] | undefined, index: number) {
+  return values?.[index] ?? 0;
+}
+
+// Reads an optional hourly value and keeps missing data as null.
+function getOptionalHourlyValue(values: number[] | undefined, index: number) {
+  return values?.[index] ?? null;
+}
+
+// Processes items with a small worker pool to avoid overloading external APIs.
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+
+  async function runWorker() {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await worker(items[currentIndex]);
+    }
+  }
+
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    () => runWorker()
+  );
+
+  await Promise.all(workers);
+  return results;
+}
+
+// Builds one UI-ready surf spot by combining forecasts and the scoring rules.
+async function buildSurfSpot(spot: SpotForecastInput): Promise<SurfSpot> {
   const [marine, wind] = await Promise.all([
     fetchMarineForecast(spot),
     fetchWindForecast(spot),
   ]);
 
   const forecastIndex = pickClosestIndex(marine.hourly.time);
-  const waveHeight = getWaveHeight(marine, forecastIndex);
+  const waveHeight = getWaveHeight(marine.hourly.wave_height, forecastIndex);
   const period = getHourlyValue(marine.hourly.wave_period, forecastIndex);
   const swellDirection = getHourlyValue(marine.hourly.swell_wave_direction, forecastIndex);
   const windSpeed = getHourlyValue(wind.hourly.wind_speed_10m, forecastIndex);
   const windDirection = getHourlyValue(wind.hourly.wind_direction_10m, forecastIndex);
-  const waterTemp = getHourlyValue(marine.hourly.sea_surface_temperature, forecastIndex);
+  const waterTemp = getOptionalHourlyValue(marine.hourly.sea_surface_temperature, forecastIndex);
 
   const { score, rating } = calculateSurfScore(
     waveHeight,
@@ -80,17 +97,28 @@ async function buildSurfSpot(
     spot.reef_penalty
   );
 
-  if (options.persistScore) {
-    await saveSurfScore({
-      spotId: spot.id,
-      waveHeight,
-      windSpeed,
-      windDirection,
-      period,
-      swellDirection,
-      waterTemp,
-      score,
-      rating,
+  const forecast: ForecastHour[] = [];
+  for (let step = 3; step <= 24; step += 3) {
+    const idx = forecastIndex + step;
+    if (idx >= marine.hourly.time.length) break;
+
+    const fWave = getWaveHeight(marine.hourly.wave_height, idx);
+    const fPeriod = getHourlyValue(marine.hourly.wave_period, idx);
+    const fSwellDir = getHourlyValue(marine.hourly.swell_wave_direction, idx);
+    const fWindSpeed = getHourlyValue(wind.hourly.wind_speed_10m, idx);
+    const fWindDir = getHourlyValue(wind.hourly.wind_direction_10m, idx);
+
+    const { score: fScore, rating: fRating } = calculateSurfScore(
+      fWave, fWindSpeed, fWindDir, fPeriod, fSwellDir,
+      spot.ideal_swell_dir, spot.offshore_wind_dir, spot.reef_penalty
+    );
+
+    forecast.push({
+      time: marine.hourly.time[idx],
+      score: fScore,
+      rating: fRating,
+      waveHeight: fWave,
+      windSpeed: fWindSpeed,
     });
   }
 
@@ -98,6 +126,8 @@ async function buildSurfSpot(
     id: spot.id,
     name: spot.name,
     location: spot.location,
+    lat: spot.lat,
+    lon: spot.lon,
     waveHeight,
     period,
     windSpeed,
@@ -107,28 +137,17 @@ async function buildSurfSpot(
     rating,
     bestTime: '',
     explanation: '',
+    forecast,
   };
 }
 
+// Returns the latest computed conditions for every surf spot.
 export async function getSurfConditions(): Promise<SurfSpot[]> {
   const spots = await getSpots();
-  return Promise.all(spots.map(buildSurfSpot));
+  return mapWithConcurrency(spots, 2, (spot) => buildSurfSpot(spot));
 }
 
-export async function refreshSurfScores(): Promise<{ inserted: number }> {
-  const spots = await getSpots();
-
-  await Promise.all(
-    spots.map((spot) =>
-      buildSurfSpot(spot, {
-        persistScore: true,
-      })
-    )
-  );
-
-  return { inserted: spots.length };
-}
-
+// Generates an AI explanation for a single spot using the saved spot metadata.
 export async function getSurfExplanation(input: SurfExplanationRequest): Promise<string> {
   const spot = await getSpotById(input.spotId);
 

@@ -35,6 +35,47 @@ export type Spot = {
   lon:  number;
 };
 
+const OPEN_METEO_MAX_RETRIES = 2;
+const OPEN_METEO_RETRY_DELAY_MS = 500;
+
+// Waits briefly before retrying a rate-limited forecast request.
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Reads an error response body into text for clearer API errors.
+async function parseErrorText(response: Response) {
+  const text = await response.text();
+  return text || 'Unknown error';
+}
+
+// Retries temporary Open-Meteo rate limits before surfacing the failure.
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  label: 'marine' | 'wind'
+): Promise<Response> {
+  let attempt = 0;
+
+  while (true) {
+    const response = await fetch(url, init);
+
+    if (response.ok) {
+      return response;
+    }
+
+    const text = await parseErrorText(response);
+
+    if (response.status === 429 && attempt < OPEN_METEO_MAX_RETRIES) {
+      attempt += 1;
+      await sleep(OPEN_METEO_RETRY_DELAY_MS * attempt);
+      continue;
+    }
+
+    throw new Error(`Open-Meteo ${label} error ${response.status}: ${text}`);
+  }
+}
+
 // Fetches wave data for a spot from the Open-Meteo Marine API.
 // Includes wave height, period, swell direction, and water temperature.
 // Cached for 10 minutes (revalidate: 600) to avoid spamming the API.
@@ -60,11 +101,7 @@ export async function fetchMarineForecast(spot: Spot): Promise<MarineResponse> {
 
   const url = `https://marine-api.open-meteo.com/v1/marine?${params.toString()}`;
 
-  const res = await fetch(url, { next: { revalidate: 600 } });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Open-Meteo marine error ${res.status}: ${text}`);
-  }
+  const res = await fetchWithRetry(url, { next: { revalidate: 600 } }, 'marine');
 
   return res.json();
 }
@@ -85,11 +122,7 @@ export async function fetchWindForecast(spot: Spot): Promise<WindResponse> {
 
   const url = `https://api.open-meteo.com/v1/forecast?${params.toString()}`;
 
-  const res = await fetch(url, { cache: 'no-store' });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Open-Meteo wind error ${res.status}: ${text}`);
-  }
+  const res = await fetchWithRetry(url, { cache: 'no-store' }, 'wind');
 
   return res.json();
 }

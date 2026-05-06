@@ -5,8 +5,21 @@
 
 import OpenAI from 'openai';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+let openai: OpenAI | null = null;
 
-export default openai;
+// Lazily creates the shared OpenAI client the first time it is needed.
+export function getOpenAIClient(): OpenAI {
+  const apiKey = process.env.OPENAI_API_KEY;
+
+  if (!apiKey) {
+    throw new Error(
+      'Missing credentials. Please pass an `apiKey`, or set the `OPENAI_API_KEY` environment variable.'
+    );
+  }
+
+  if (!openai) {
+    openai = new OpenAI({ apiKey });
+  }
+
+  return openai;
+}
